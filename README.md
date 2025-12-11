@@ -136,7 +136,6 @@ brew install tesseract              # Mac
 ```bash
 # 1. Clone repository
 git clone https://github.com/NehaBhask/InvoicePro.git
-cd invoice-pro
 
 # 2. Create virtual environment
 python -m venv venv
