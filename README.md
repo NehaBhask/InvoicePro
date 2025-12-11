@@ -330,7 +330,7 @@ git clone https://github.com/NehaBhask/InvoicePro.git
 git checkout -b feature/your-feature
 
 # 3. Install dev dependencies
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 
 # 4. Make changes and test
 pytest tests/
