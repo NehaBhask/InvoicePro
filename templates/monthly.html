@@ -1,0 +1,416 @@
+{% extends "layout.html" %}
+
+{% block title %}Monthly Expenses - InvoicePro{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4">
+        <i class="fas fa-calendar-alt"></i> Monthly Expenses Dashboard
+        <span class="badge bg-info fs-6">{{ current_month }}</span>
+    </h2>
+
+    <!-- Navigation -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="btn-group" role="group">
+                <a href="{{ url_for('monthly_overview') }}" class="btn btn-primary">
+                    <i class="fas fa-tachometer-alt"></i> Overview
+                </a>
+                <a href="{{ url_for('monthly_report') }}" class="btn btn-outline-primary">
+                    <i class="fas fa-chart-pie"></i> Reports
+                </a>
+                <a href="{{ url_for('monthly_comparison') }}?months=6" class="btn btn-outline-primary">
+                    <i class="fas fa-chart-line"></i> Comparison
+                </a>
+                <a href="{{ url_for('export_monthly') }}" class="btn btn-outline-success">
+                    <i class="fas fa-file-excel"></i> Export
+                </a>
+                <a href="{{ url_for('view_alerts') }}" class="btn btn-outline-warning position-relative">
+                    <i class="fas fa-bell"></i> Alerts
+                    {% if alerts_count > 0 %}
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                        {{ alerts_count }}
+                    </span>
+                    {% endif %}
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Summary Cards -->
+    <div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Current Month</h5>
+                <h2 class="card-text">
+                    {% set ns = namespace(found=false, total=0, count=0) %}
+                    {% for month, total, count in monthly_data %}
+                        {% if month == current_month %}
+                            {{ format_currency(total) }}
+                            {% set ns.found = true %}
+                            {% set ns.total = total %}
+                            {% set ns.count = count %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if not ns.found %}
+                        $0.00
+                    {% endif %}
+                </h2>
+                <p class="card-text">
+                    {% if ns.found %}
+                        {{ ns.count }} transactions
+                    {% else %}
+                        0 transactions
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h5 class="card-title">Last Month</h5>
+                    <h2 class="card-text">
+                        {% if monthly_data|length > 1 %}
+                            {{ format_currency(monthly_data[1][1]) }}
+                        {% else %}
+                            $0.00
+                        {% endif %}
+                    </h2>
+                    <p class="card-text">
+                        {% if monthly_data|length > 1 %}
+                            {{ monthly_data[1][2] }} transactions
+                        {% else %}
+                            No data
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h5 class="card-title">3-Month Average</h5>
+                    <h2 class="card-text">
+                        {% if monthly_data|length >= 3 %}
+                            {% set totals = [] %}
+                            {% for i in range(3) %}
+                                {% if i < monthly_data|length %}
+                                    {% set _ = totals.append(monthly_data[i][1]) %}
+                                {% endif %}
+                            {% endfor %}
+                            {% if totals|length > 0 %}
+                                {% set sum_total = totals|sum %}
+                                {{ format_currency(sum_total / totals|length) }}
+                            {% else %}
+                                $0.00
+                            {% endif %}
+                        {% else %}
+                            $0.00
+                        {% endif %}
+                    </h2>
+                    <p class="card-text">Based on last 3 months</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <h5 class="card-title">Budget Status</h5>
+                    <h2 class="card-text">
+                        {% set total_budget = 0 %}
+                        {% set total_actual = 0 %}
+                        {% for category, info in budgets.items() %}
+                            {% set total_budget = total_budget + info.budget %}
+                            {% set total_actual = total_actual + info.actual %}
+                        {% endfor %}
+                        {{ format_currency(total_actual) }} / {{ format_currency(total_budget) }}
+                    </h2>
+                    <p class="card-text">
+                        {% if total_budget > 0 %}
+                            {% set percentage = (total_actual / total_budget) * 100 %}
+                            {{ "%.1f"|format(percentage) }}% used
+                        {% else %}
+                            No budget set
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Monthly History -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-history"></i> Monthly History</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Month</th>
+                                    <th>Total</th>
+                                    <th>Transactions</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for month, total, count in monthly_data %}
+                                <tr>
+                                    <td>{{ month }}</td>
+                                    <td>{{ format_currency(total) }}</td>
+                                    <td>{{ count }}</td>
+                                    <td>
+                                        <a href="{{ url_for('monthly_detail', month_year=month) }}" 
+                                           class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-eye"></i> View
+                                        </a>
+                                        <a href="{{ url_for('export_monthly') }}?month={{ month }}" 
+                                           class="btn btn-sm btn-outline-success">
+                                            <i class="fas fa-download"></i> Export
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Category Breakdown -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Current Month Categories</h5>
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#budgetModal">
+                        <i class="fas fa-edit"></i> Set Budgets
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Spent</th>
+                                    <th>Budget</th>
+                                    <th>Remaining</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for category, total in current_month_categories %}
+                                <tr>
+                                    <td>{{ category }}</td>
+                                    <td>{{ format_currency(total) }}</td>
+                                    <td>
+                                        {% if category in budgets %}
+                                            {{ format_currency(budgets[category].budget) }}
+                                        {% else %}
+                                            <span class="text-muted">Not set</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if category in budgets and budgets[category].remaining is not none %}
+                                            {% if budgets[category].remaining >= 0 %}
+                                                <span class="text-success">{{ format_currency(budgets[category].remaining) }}</span>
+                                            {% else %}
+                                                <span class="text-danger">{{ format_currency(-budgets[category].remaining) }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+    {% if category in budgets and budgets[category].percentage is not none %}
+        {% set percentage = budgets[category].percentage %}
+        {% set width_class = '' %}
+        
+        {# Determine width class #}
+        {% if percentage > 100 %}
+            {% set width_class = 'w-100' %}
+        {% elif percentage >= 90 %}
+            {% set width_class = 'w-90' %}
+        {% elif percentage >= 80 %}
+            {% set width_class = 'w-80' %}
+        {% elif percentage >= 70 %}
+            {% set width_class = 'w-70' %}
+        {% elif percentage >= 60 %}
+            {% set width_class = 'w-60' %}
+        {% elif percentage >= 50 %}
+            {% set width_class = 'w-50' %}
+        {% elif percentage >= 40 %}
+            {% set width_class = 'w-40' %}
+        {% elif percentage >= 30 %}
+            {% set width_class = 'w-30' %}
+        {% elif percentage >= 20 %}
+            {% set width_class = 'w-20' %}
+        {% elif percentage >= 10 %}
+            {% set width_class = 'w-10' %}
+        {% else %}
+            {% set width_class = 'w-5' %}
+        {% endif %}
+        
+        {# Determine color class #}
+        {% if percentage <= 70 %}
+            {% set color_class = 'bg-success' %}
+        {% elif percentage <= 90 %}
+            {% set color_class = 'bg-warning' %}
+        {% else %}
+            {% set color_class = 'bg-danger' %}
+        {% endif %}
+        
+        <div class="progress" style="height: 20px;">
+            <div class="progress-bar {{ color_class }} {{ width_class }}">
+                {{ percentage|int }} percent
+            </div>
+        </div>
+    {% else %}
+        <span class="badge bg-secondary">No budget</span>
+    {% endif %}
+</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Budget Modal -->
+<div class="modal fade" id="budgetModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Set Monthly Budgets - {{ current_month }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="budgetForm">
+                    <input type="hidden" name="month_year" value="{{ current_month }}">
+                    <div class="row">
+                        {% for category in categories %}
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">{{ category }}</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control budget-input" 
+                                       name="budget_{{ category }}" 
+                                       placeholder="Budget amount"
+                                       step="0.01"
+                                       min="0"
+                                       value="{{ budgets[category].budget if category in budgets else '' }}">
+                            </div>
+                            <small class="form-text text-muted">
+                                Current spending: 
+                                {% set found = false %}
+                                {% for cat, total in current_month_categories %}
+                                    {% if cat == category %}
+                                        {{ format_currency(total) }}
+                                        {% set found = true %}
+                                    {% endif %}
+                                {% endfor %}
+                                {% if not found %}
+                                    $0.00
+                                {% endif %}
+                            </small>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveBudgets()">Save Budgets</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function saveBudgets() {
+    const monthYear = document.querySelector('input[name="month_year"]').value;
+    const inputs = document.querySelectorAll('.budget-input');
+    
+    // Collect all budgets
+    const budgets = [];
+    inputs.forEach(input => {
+        if (input.value) {
+            const category = input.name.replace('budget_', '');
+            budgets.push({
+                category: category,
+                amount: parseFloat(input.value)
+            });
+        }
+    });
+    
+    if (budgets.length === 0) {
+        alert('Please enter at least one budget amount');
+        return;
+    }
+    
+    // Show loading
+    const saveBtn = document.querySelector('#budgetModal .btn-primary');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    saveBtn.disabled = true;
+    
+    // Save each budget
+    let savedCount = 0;
+    let errors = [];
+    
+    budgets.forEach(budget => {
+        fetch('/set_budget', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `month_year=${encodeURIComponent(monthYear)}&category=${encodeURIComponent(budget.category)}&budget_amount=${budget.amount}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            savedCount++;
+            if (!data.success) {
+                errors.push(`${budget.category}: ${data.message}`);
+            }
+            
+            if (savedCount === budgets.length) {
+                saveBtn.innerHTML = originalText;
+                saveBtn.disabled = false;
+                
+                if (errors.length === 0) {
+                    alert('Budgets saved successfully!');
+                    location.reload();
+                } else {
+                    alert('Some budgets failed to save:\n' + errors.join('\n'));
+                }
+            }
+        })
+        .catch(error => {
+            savedCount++;
+            errors.push(`${budget.category}: Network error`);
+            
+            if (savedCount === budgets.length) {
+                saveBtn.innerHTML = originalText;
+                saveBtn.disabled = false;
+                alert('Error saving budgets: ' + errors.join('\n'));
+            }
+        });
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,464 @@
+{% extends "layout.html" %}
+
+{% block title %}Monthly Comparison - InvoicePro{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>
+            <i class="fas fa-chart-line"></i> Monthly Comparison
+        </h2>
+        <div>
+            <a href="{{ url_for('monthly_overview') }}" class="btn btn-outline-primary">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Comparison Controls -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title"><i class="fas fa-sliders-h"></i> Comparison Settings</h5>
+            <form method="GET" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Number of Months</label>
+                    <select name="months" class="form-select" onchange="this.form.submit()">
+                        <option value="3" {% if months==3 %}selected{% endif %}>3 Months</option>
+                        <option value="6" {% if months==6 %}selected{% endif %}>6 Months</option>
+                        <option value="12" {% if months==12 %}selected{% endif %}>12 Months</option>
+                    </select>
+                </div>
+                <div class="col-md-9 d-flex align-items-end">
+                    <div class="btn-group" role="group">
+                        <a href="{{ url_for('monthly_overview') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-tachometer-alt"></i> Overview
+                        </a>
+                        <a href="{{ url_for('monthly_report') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-chart-pie"></i> Current Report
+                        </a>
+                        <button type="button" onclick="exportComparison()" class="btn btn-success">
+                            <i class="fas fa-file-excel"></i> Export Comparison
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total Period</h5>
+                    <h2 class="card-text">
+                        {% set period_total = 0 %}
+                        {% for month_data in comparison_data %}
+                            {% set period_total = period_total + month_data.total_spent %}
+                        {% endfor %}
+                        {{ format_currency(period_total) }}
+                    </h2>
+                    <p class="card-text">{{ months }} months</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Monthly Average</h5>
+                    <h2 class="card-text">
+                        {% if comparison_data %}
+                            {{ format_currency(period_total / comparison_data|length) }}
+                        {% else %}
+                            {{ format_currency(0) }}
+                        {% endif %}
+                    </h2>
+                    <p class="card-text">Per month average</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Growth Rate</h5>
+                    <h2 class="card-text">
+                        {% if comparison_data|length >= 2 %}
+                            {% set current = comparison_data[0].total_spent %}
+                            {% set previous = comparison_data[1].total_spent %}
+                            {% if previous > 0 %}
+                                {% set growth = ((current - previous) / previous) * 100 %}
+                                {{ "%.1f"|format(growth) }}%
+                            {% else %}
+                                0%
+                            {% endif %}
+                        {% else %}
+                            0%
+                        {% endif %}
+                    </h2>
+                    <p class="card-text">vs previous month</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Transactions</h5>
+                    <h2 class="card-text">
+                        {% set total_transactions = 0 %}
+                        {% for month_data in comparison_data %}
+                            {% set total_transactions = total_transactions + month_data.transaction_count %}
+                        {% endfor %}
+                        {{ total_transactions }}
+                    </h2>
+                    <p class="card-text">Total transactions</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Comparison Table -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-table"></i> Monthly Spending Comparison</h5>
+        </div>
+        <div class="card-body">
+            {% if comparison_data %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Month</th>
+                            <th>Transactions</th>
+                            <th>Total Spent</th>
+                            <th>Average Transaction</th>
+                            <th>% Change</th>
+                            <th>Top Category</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for month in comparison_data %}
+                        <tr>
+                            <td><strong>{{ month.month_year }}</strong></td>
+                            <td>{{ month.transaction_count or 0 }}</td>
+                            <td class="fw-bold">{{ format_currency(month.total_spent or 0) }}</td>
+                            <td>
+                                {% if month.average_transaction %}
+                                    {{ format_currency(month.average_transaction) }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if loop.index0 > 0 %}
+                                    {% set prev_month = comparison_data[loop.index0 - 1] %}
+                                    {% if prev_month.total_spent and prev_month.total_spent > 0 %}
+                                        {% set change = ((month.total_spent - prev_month.total_spent) / prev_month.total_spent) * 100 %}
+                                        <span class="badge {% if change >= 0 %}bg-danger{% else %}bg-success{% endif %}">
+                                            {{ "%+.1f"|format(change) }}%
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-info">New</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if month.top_category %}
+                                    <span class="badge bg-primary">{{ month.top_category }}</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('monthly_report') }}?month={{ month.month_year }}" 
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-eye"></i> View
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-primary">
+                        <tr>
+                            <td><strong>Period Averages</strong></td>
+                            <td><strong>
+                                {% if comparison_data %}
+                                    {{ (total_transactions / comparison_data|length)|round|int }}
+                                {% else %}
+                                    0
+                                {% endif %}
+                            </strong></td>
+                            <td><strong>
+                                {% if comparison_data %}
+                                    {{ format_currency(period_total / comparison_data|length) }}
+                                {% else %}
+                                    {{ format_currency(0) }}
+                                {% endif %}
+                            </strong></td>
+                            <td><strong>
+                                {% set all_avgs = [] %}
+                                {% for month in comparison_data %}
+                                    {% if month.average_transaction %}
+                                        {% set _ = all_avgs.append(month.average_transaction) %}
+                                    {% endif %}
+                                {% endfor %}
+                                {% if all_avgs %}
+                                    {{ format_currency(all_avgs|sum / all_avgs|length) }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </strong></td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+                <h4>No comparison data available</h4>
+                <p class="text-muted">Upload invoices for multiple months to see comparisons</p>
+                <a href="{{ url_for('upload_invoice') }}" class="btn btn-primary mt-3">
+                    <i class="fas fa-upload"></i> Upload Invoices
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Category Trend Analysis -->
+    {% if category_trends %}
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-chart-area"></i> Category Trends (Last {{ months }} Months)</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            {% for month in comparison_data %}
+                            <th class="text-center">{{ month.month_year }}</th>
+                            {% endfor %}
+                            <th>Trend</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for category, amounts in category_trends.items() %}
+                        <tr>
+                            <td><strong>{{ category }}</strong></td>
+                            {% for month in comparison_data %}
+                            <td class="text-center">
+                                {% set month_key = month.month_year %}
+                                {% if amounts[month_key] is defined and amounts[month_key] > 0 %}
+                                    {{ format_currency(amounts[month_key]) }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                            <td>
+                                {% set trend_values = [] %}
+                                {% for month in comparison_data %}
+                                    {% set month_key = month.month_year %}
+                                    {% if amounts[month_key] is defined %}
+                                        {% set _ = trend_values.append(amounts[month_key]) %}
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                {% if trend_values|length >= 2 %}
+                                    {% set first = trend_values[0] %}
+                                    {% set last = trend_values[-1] %}
+                                    {% if first > 0 %}
+                                        {% set trend = ((last - first) / first) * 100 %}
+                                        <span class="badge {% if trend > 0 %}bg-danger{% elif trend < 0 %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {{ "%+.1f"|format(trend) }}%
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-info">New</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="fw-bold">
+                                {% set category_total = 0 %}
+                                {% for month_key, amount in amounts.items() %}
+                                    {% set category_total = category_total + amount %}
+                                {% endfor %}
+                                {{ format_currency(category_total) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Insights Panel -->
+    {% if comparison_data %}
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-lightbulb"></i> Comparison Insights</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card insight-card bg-light">
+                                <div class="card-body">
+                                    <h6><i class="fas fa-arrow-up text-success"></i> Most Improved</h6>
+                                    {% if comparison_data|length >= 2 %}
+                                        {% set improvements = [] %}
+                                        {% for category, amounts in category_trends.items() %}
+                                            {% set trend_values = [] %}
+                                            {% for month in comparison_data %}
+                                                {% set month_key = month.month_year %}
+                                                {% if amounts[month_key] is defined %}
+                                                    {% set _ = trend_values.append(amounts[month_key]) %}
+                                                {% endif %}
+                                            {% endfor %}
+                                            
+                                            {% if trend_values|length >= 2 and trend_values[0] > 0 %}
+                                                {% set improvement = ((trend_values[-1] - trend_values[0]) / trend_values[0]) * 100 %}
+                                                {% set _ = improvements.append((category, improvement)) %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        
+                                        {% if improvements %}
+                                            {% set best_improvement = improvements|sort(attribute='1')|first %}
+                                            <p class="mb-1">
+                                                <strong>{{ best_improvement[0] }}</strong>
+                                            </p>
+                                            <small class="text-success">
+                                                {{ "%+.1f"|format(best_improvement[1]) }}% reduction
+                                            </small>
+                                        {% else %}
+                                            <p class="text-muted">No significant improvements</p>
+                                        {% endif %}
+                                    {% else %}
+                                        <p class="text-muted">Need more data</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card insight-card bg-light">
+                                <div class="card-body">
+                                    <h6><i class="fas fa-fire text-danger"></i> Highest Increase</h6>
+                                    {% if comparison_data|length >= 2 %}
+                                        {% set increases = [] %}
+                                        {% for category, amounts in category_trends.items() %}
+                                            {% set trend_values = [] %}
+                                            {% for month in comparison_data %}
+                                                {% set month_key = month.month_year %}
+                                                {% if amounts[month_key] is defined %}
+                                                    {% set _ = trend_values.append(amounts[month_key]) %}
+                                                {% endif %}
+                                            {% endfor %}
+                                            
+                                            {% if trend_values|length >= 2 and trend_values[0] > 0 %}
+                                                {% set increase = ((trend_values[-1] - trend_values[0]) / trend_values[0]) * 100 %}
+                                                {% set _ = increases.append((category, increase)) %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        
+                                        {% if increases %}
+                                            {% set highest_increase = increases|sort(attribute='1', reverse=true)|first %}
+                                            <p class="mb-1">
+                                                <strong>{{ highest_increase[0] }}</strong>
+                                            </p>
+                                            <small class="text-danger">
+                                                {{ "%+.1f"|format(highest_increase[1]) }}% increase
+                                            </small>
+                                        {% else %}
+                                            <p class="text-muted">No significant increases</p>
+                                        {% endif %}
+                                    {% else %}
+                                        <p class="text-muted">Need more data</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card insight-card bg-light">
+                                <div class="card-body">
+                                    <h6><i class="fas fa-chart-line text-info"></i> Spending Pattern</h6>
+                                    {% set all_transaction_counts = [] %}
+                                    {% set all_totals = [] %}
+                                    {% for month in comparison_data %}
+                                        {% if month.transaction_count %}
+                                            {% set _ = all_transaction_counts.append(month.transaction_count) %}
+                                        {% endif %}
+                                        {% if month.total_spent %}
+                                            {% set _ = all_totals.append(month.total_spent) %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    
+                                    <p class="mb-1">
+                                        <strong>Avg Monthly Spend:</strong> 
+                                        {{ format_currency(all_totals|sum / all_totals|length if all_totals else 0) }}
+                                    </p>
+                                    <small class="text-muted">
+                                        {{ all_transaction_counts|sum if all_transaction_counts else 0 }} total transactions
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function exportComparison() {
+    // FIXED: Use the template variable directly without declaring a new const
+    window.location.href = '/export_comparison?months={{ months }}';
+}
+
+// Optional: Initialize when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Monthly comparison view loaded');
+    
+    // Add any additional initialization code here
+    const monthSelect = document.querySelector('select[name="months"]');
+    if (monthSelect) {
+        monthSelect.addEventListener('change', function() {
+            // The form will auto-submit, but we can add loading indicator if needed
+            document.body.style.cursor = 'wait';
+        });
+    }
+});
+</script>
+
+<style>
+.insight-card {
+    border-left: 4px solid #dee2e6;
+    height: 100%;
+    transition: transform 0.2s;
+}
+.insight-card:hover {
+    transform: translateY(-2px);
+}
+.table th {
+    white-space: nowrap;
+}
+</style>
+{% endblock %}

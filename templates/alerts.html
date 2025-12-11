@@ -1,0 +1,449 @@
+{% extends "layout.html" %}
+
+{% block title %}Alerts and Notifications - InvoicePro{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>
+            <i class="fas fa-bell"></i> Alerts & Notifications
+        </h2>
+        <div>
+            <a href="{{ url_for('monthly_overview') }}" class="btn btn-outline-primary">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Alert Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total Alerts</h5>
+                    <h2 class="card-text">{{ alerts|length }}</h2>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Unread</h5>
+                    <h2 class="card-text">
+                        {% set unread_count = [] %}
+                        {% for alert in alerts %}
+                            {% if alert[4] == 0 %}
+                                {% set _ = unread_count.append(1) %}
+                            {% endif %}
+                        {% endfor %}
+                        {{ unread_count|length }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-danger">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Budget Alerts</h5>
+                    <h2 class="card-text">
+                        {% set budget_count = [] %}
+                        {% for alert in alerts %}
+                            {% if alert[2] == 'budget_exceeded' %}
+                                {% set _ = budget_count.append(1) %}
+                            {% endif %}
+                        {% endfor %}
+                        {{ budget_count|length }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Recent (7 days)</h5>
+                    <h2 class="card-text">
+                        {% set recent_count = [] %}
+                        {% for alert in alerts %}
+                            {% set alert_date = alert[5].split(' ')[0] if alert[5] else '' %}
+                            {% if alert_date >= date_7days_ago %}
+                                {% set _ = recent_count.append(1) %}
+                            {% endif %}
+                        {% endfor %}
+                        {{ recent_count|length }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts Table -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-list"></i> All Alerts</h5>
+            <div class="btn-group" role="group">
+                <button class="btn btn-sm btn-outline-primary" onclick="markAllAsRead()">
+                    <i class="fas fa-check-circle"></i> Mark All as Read
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="clearAllAlerts()">
+                    <i class="fas fa-trash"></i> Clear All
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            {% if alerts %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th width="50px">Status</th>
+                            <th width="100px">Type</th>
+                            <th>Message</th>
+                            <th width="150px">Date</th>
+                            <th width="100px">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for alert in alerts %}
+                        <tr id="alert-row-{{ alert[0] }}" class="{% if alert[4] == 0 %}table-warning{% endif %}">
+                            <td class="text-center">
+                                {% if alert[4] == 0 %}
+                                    <span class="badge bg-danger"><i class="fas fa-exclamation-circle"></i> New</span>
+                                {% else %}
+                                    <span class="badge bg-secondary"><i class="fas fa-check-circle"></i> Read</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge 
+                                    {% if alert[2] == 'budget_exceeded' %}bg-danger
+                                    {% elif alert[2] == 'large_expense' %}bg-warning
+                                    {% else %}bg-info{% endif %}">
+                                    {{ alert[2]|replace('_', ' ')|title }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="alert-message">
+                                    {{ alert[3] }}
+                                </div>
+                            </td>
+                            <td>
+                                <small>{{ alert[5] }}</small>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    {% if alert[4] == 0 %}
+                                    <button class="btn btn-success" onclick="markAsRead('{{alert[0]}}')"
+                                            title="Mark as read">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn btn-outline-danger" onclick="deleteAlert('{{alert[0]}}')"
+                                            title="Delete alert">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination or summary -->
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <small class="text-muted">
+                    Showing {{ alerts|length }} alerts
+                </small>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="markAllAsRead()">
+                        <i class="fas fa-check-double"></i> Mark All as Read
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="clearAllAlerts()">
+                        <i class="fas fa-trash-alt"></i> Clear All
+                    </button>
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-bell-slash fa-3x text-muted mb-3"></i>
+                <h4>No Alerts</h4>
+                <p class="text-muted">You're all caught up! No alerts or notifications at the moment.</p>
+                <p class="text-muted">Alerts will appear here when budgets are exceeded or important events occur.</p>
+                <a href="{{ url_for('monthly_overview') }}" class="btn btn-primary mt-2">
+                    <i class="fas fa-chart-bar"></i> Go to Dashboard
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Alert Types Explanation -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-info-circle"></i> About Alerts</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card border-danger mb-3">
+                                <div class="card-header bg-danger text-white">
+                                    <i class="fas fa-exclamation-triangle"></i> Budget Exceeded
+                                </div>
+                                <div class="card-body">
+                                    <p>Triggered when spending in a category exceeds the budget you set.</p>
+                                    <small class="text-muted">Helps you stay on track with your financial goals.</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card border-warning mb-3">
+                                <div class="card-header bg-warning text-white">
+                                    <i class="fas fa-money-bill-wave"></i> Large Expense
+                                </div>
+                                <div class="card-body">
+                                    <p>Notifies you about unusually large transactions.</p>
+                                    <small class="text-muted">Helps detect potential errors or fraud.</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card border-info mb-3">
+                                <div class="card-header bg-info text-white">
+                                    <i class="fas fa-chart-bar"></i> Monthly Summary
+                                </div>
+                                <div class="card-body">
+                                    <p>Provides monthly spending summaries and insights.</p>
+                                    <small class="text-muted">Helps with financial planning and review.</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-cog"></i> Alert Settings</h6>
+                        <p class="mb-0">
+                            You can manage alert preferences from your budget settings. 
+                            <a href="{{ url_for('monthly_overview') }}" class="alert-link">Go to Budget Settings</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Function to mark a single alert as read
+function markAsRead(alertId) {
+    if (!confirm('Mark this alert as read?')) return;
+    
+    fetch('/mark_alert_read/' + alertId, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update the row appearance
+            const row = document.getElementById('alert-row-' + alertId);
+            if (row) {
+                row.classList.remove('table-warning');
+                // Update the status badge
+                const statusCell = row.querySelector('td:first-child');
+                if (statusCell) {
+                    statusCell.innerHTML = '<span class="badge bg-secondary"><i class="fas fa-check-circle"></i> Read</span>';
+                }
+                // Remove the mark as read button
+                const buttonsCell = row.querySelector('td:last-child');
+                if (buttonsCell) {
+                    buttonsCell.innerHTML = `
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button class="btn btn-outline-danger" onclick="deleteAlert(${alertId})" 
+                                    title="Delete alert">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+            // Show success message
+            showAlert('success', data.message);
+        } else {
+            showAlert('danger', 'Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Network error: ' + error);
+    });
+}
+
+// Function to mark all alerts as read
+function markAllAsRead() {
+    if (!confirm('Mark all alerts as read?')) return;
+    
+    fetch('/mark_all_alerts_read', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload the page to show updated status
+            location.reload();
+        } else {
+            showAlert('danger', 'Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Network error: ' + error);
+    });
+}
+
+// Function to delete a single alert
+function deleteAlert(alertId) {
+    if (!confirm('Delete this alert?')) return;
+    
+    fetch('/delete_alert/' + alertId, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remove the row from the table
+            const row = document.getElementById('alert-row-' + alertId);
+            if (row) {
+                row.remove();
+                // Show success message
+                showAlert('success', data.message);
+                // Update the alert count
+                updateAlertCount();
+            }
+        } else {
+            showAlert('danger', 'Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Network error: ' + error);
+    });
+}
+
+// Function to clear all alerts
+function clearAllAlerts() {
+    if (!confirm('Clear all alerts? This action cannot be undone.')) return;
+    
+    fetch('/clear_all_alerts', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+            
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reload the page
+            location.reload();
+        } else {
+            showAlert('danger', 'Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Network error: ' + error);
+    });
+}
+
+// Helper function to show alert messages
+function showAlert(type, message) {
+    // Create alert element
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insert at the top of the content
+    const container = document.querySelector('.container-fluid');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+// Helper function to update alert count display
+function updateAlertCount() {
+    // You can implement this if you want live updates
+    // For now, we'll just reload if table becomes empty
+    const tableBody = document.querySelector('tbody');
+    if (tableBody && tableBody.children.length === 0) {
+        // If no more alerts, reload to show "No Alerts" message
+        setTimeout(() => location.reload(), 1000);
+    }
+}
+
+// Initialize tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
+
+<style>
+.alert-message {
+    line-height: 1.5;
+    padding: 5px 0;
+}
+
+.table-warning {
+    background-color: rgba(255, 243, 205, 0.5) !important;
+}
+
+.btn-group-sm .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+/* Hover effects */
+tr:hover {
+    background-color: rgba(0, 123, 255, 0.05) !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .btn-group {
+        flex-direction: column;
+    }
+    
+    .btn-group .btn {
+        margin-bottom: 2px;
+    }
+}
+</style>
+{% endblock %}

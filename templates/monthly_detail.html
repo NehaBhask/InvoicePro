@@ -1,0 +1,205 @@
+{% extends "layout.html" %}
+
+{% block title %}Monthly Details - {{ month_year }} - InvoicePro{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>
+            <i class="fas fa-calendar-day"></i> Monthly Details
+            <span class="badge bg-primary fs-6">{{ month_year }}</span>
+        </h2>
+        <div>
+            <a href="{{ url_for('monthly_overview') }}" class="btn btn-outline-primary">
+                <i class="fas fa-arrow-left"></i> Back to Overview
+            </a>
+            <a href="{{ url_for('export_monthly') }}?month={{ month_year }}" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> Export to Excel
+            </a>
+        </div>
+    </div>
+
+    <!-- Monthly Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total Expenses</h5>
+                    <h2 class="card-text">{{ format_currency(month_stats[1]) }}</h2>
+                    <p class="card-text">{{ month_stats[0] }} transactions</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Average Transaction</h5>
+                    <h2 class="card-text">{{ format_currency(month_stats[2]) }}</h2>
+                    <p class="card-text">per invoice</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Period</h5>
+                    <h4 class="card-text">{{ format_date(month_stats[3], '%b %d') }} - {{ format_date(month_stats[4], '%b %d') }}</h4>
+                    <p class="card-text">Date range</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Daily Average</h5>
+                    <h2 class="card-text">
+                        {% if month_stats[0] > 0 %}
+                            {{ format_currency(month_stats[1] / month_stats[0]) }}
+                        {% else %}
+                            $0.00
+                        {% endif %}
+                    </h2>
+                    <p class="card-text">per day</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Category Breakdown -->
+        <div class="col-md-5">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Category Breakdown</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Amount</th>
+                                    <th>Count</th>
+                                    <th>% of Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for category, total, count in category_breakdown %}
+                                <tr>
+                                    <td>{{ category }}</td>
+                                    <td>{{ format_currency(total) }}</td>
+                                    <td>{{ count }}</td>
+                                    <td>
+                                        {% if month_stats[1] > 0 %}
+                                            {{ "%.1f"|format((total/month_stats[1])*100) }}%
+                                        {% else %}
+                                            0%
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot>
+                                <tr class="table-primary">
+                                    <td><strong>Total</strong></td>
+                                    <td><strong>{{ format_currency(month_stats[1]) }}</strong></td>
+                                    <td><strong>{{ month_stats[0] }}</strong></td>
+                                    <td><strong>100%</strong></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Spending -->
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-line"></i> Daily Spending Pattern</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Day</th>
+                                    <th>Amount</th>
+                                    <th>Cumulative</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set cumulative = 0 %}
+                                {% for date, daily_total in daily_spending %}
+                                {% set cumulative = cumulative + daily_total %}
+                                <tr>
+                                    <td>{{ format_date(date, '%Y-%m-%d') }}</td>
+                                    <td>{{ format_date(date, '%a') }}</td>
+                                    <td>{{ format_currency(daily_total) }}</td>
+                                    <td>{{ format_currency(cumulative) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Expenses for the Month -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-receipt"></i> All Expenses for {{ month_year }}</h5>
+                    <span class="badge bg-primary">{{ expenses|length }} invoices</span>
+                </div>
+                <div class="card-body">
+                    {% if expenses %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Invoice No</th>
+                                    <th>Vendor</th>
+                                    <th>Category</th>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for expense in expenses %}
+                                <tr>
+                                    <td>{{ format_date(expense[2]) }}</td>
+                                    <td>{{ expense[1] }}</td>
+                                    <td>{{ expense[5] if expense[5] else 'N/A' }}</td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ expense[4] }}</span>
+                                    </td>
+                                    <td>{{ expense[6] if expense[6] else 'N/A' }}</td>
+                                    <td class="fw-bold">{{ format_currency(expense[3]) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-receipt fa-3x text-muted mb-3"></i>
+                        <h4>No expenses found for {{ month_year }}</h4>
+                        <p class="text-muted">Upload some invoices to see data here</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

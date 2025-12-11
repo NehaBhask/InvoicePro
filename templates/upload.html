@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+
+{% block title %}Upload Invoice - InvoicePro{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="fas fa-upload"></i> Upload Invoice</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data" action="{{ url_for('upload_invoice') }}">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Select Invoice Image</label>
+                        <input class="form-control" type="file" id="file" name="file" accept="image/*" required>
+                        <div class="form-text">
+                            Supported formats: JPG, PNG, JPEG, GIF, TIFF, BMP
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-bolt"></i> Process Invoice
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> How It Works</h5>
+            </div>
+            <div class="card-body">
+                <ol>
+                    <li>Upload an image of your invoice</li>
+                    <li>Our system will automatically extract text using OCR</li>
+                    <li>AI will categorize and analyze the invoice data</li>
+                    <li>View the processed data in your expenses list</li>
+                    <li>Get insights from your spending patterns</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2 class="text-center mb-4">Expense Insights</h2>
+
+<div class="row text-center">
+  <div class="col-md-6 mb-4">
+    <div class="card shadow p-3">
+      <h5>Spending Over Time</h5>
+      <img src="data:image/png;base64,{{ plot1 }}" class="img-fluid" alt="Spending Over Time">
+    </div>
+  </div>
+  <div class="col-md-6 mb-4">
+    <div class="card shadow p-3">
+      <h5>Category-wise Spending</h5>
+      <img src="data:image/png;base64,{{ plot2 }}" class="img-fluid" alt="Category-wise Spending">
+    </div>
+  </div>
+</div>
+
+<div class="text-center mt-3">
+  <a href="/expenses" class="btn btn-outline-primary me-2">View Expenses</a>
+  <a href="/" class="btn btn-primary">Upload New Invoice</a>
+</div>
+{% endblock %}

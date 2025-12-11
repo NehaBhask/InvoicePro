@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Invoice Scanner Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='output.css') }}">
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col items-center py-10">
+
+  <div class="bg-white shadow-lg rounded-2xl p-8 w-full max-w-5xl">
+    <h1 class="text-3xl font-bold text-center text-indigo-600 mb-6">InvoicePro-Invoice Scanner & Expense Analyzer</h1>
+
+    <!-- Upload Form -->
+    <form action="/upload" method="POST" enctype="multipart/form-data" class="flex justify-center items-center gap-4 mb-6">
+      <input type="file" name="invoice" class="border rounded-lg px-4 py-2">
+      <button type="submit" class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold px-6 py-2 rounded-lg">
+        Upload Invoice
+      </button>
+    </form>
+
+    <!-- Charts -->
+    {% if chart %}
+    <div class="mt-8 text-center">
+      <h2 class="text-xl font-semibold mb-2">Expense Insights</h2>
+      <img src="data:image/png;base64,{{ chart }}" alt="Expense Chart" class="rounded-lg mx-auto shadow-lg">
+    </div>
+    {% else %}
+    <p class="text-center text-gray-500">No data yet. Upload an invoice to see insights.</p>
+    {% endif %}
+
+    <!-- Table -->
+    <div class="mt-10 overflow-x-auto">
+      <h2 class="text-xl font-semibold mb-3 text-center">Recent Invoices</h2>
+      <table class="min-w-full bg-white rounded-lg overflow-hidden shadow-md">
+        <thead class="bg-indigo-500 text-white">
+          <tr>
+            <th class="px-4 py-2">Name</th>
+            <th class="px-4 py-2">Date</th>
+            <th class="px-4 py-2">Amount (₹)</th>
+            <th class="px-4 py-2">Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in invoices %}
+          <tr class="border-b hover:bg-indigo-50">
+            <td class="px-4 py-2">{{ i.name }}</td>
+            <td class="px-4 py-2">{{ i.date }}</td>
+            <td class="px-4 py-2">{{ i.amount }}</td>
+            <td class="px-4 py-2">{{ i.category }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-sm text-gray-400 text-center mt-6">Last updated on {{ now.strftime("%B %d, %Y %H:%M") }}</p>
+  </div>
+</body>
+</html>
