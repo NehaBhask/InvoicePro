@@ -78,7 +78,7 @@
 - **Intuitive Interface**: Clean, modern Bootstrap 5 interface
 - **Drag & Drop Upload**: Easy invoice submission
 - **Real-time Updates**: Live data updates without page refresh
-- **Export Options**: Multiple format export capabilities
+- **Export Options**: Multiple format export capabilities for invoices
 
 ## 🏗️ **System Architecture**
 
@@ -220,26 +220,45 @@ CREATE TABLE users (
 );
 
 -- Expenses table
-CREATE TABLE expenses (
+CREATE TABLE IF NOT EXISTS expenses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    date DATE NOT NULL,
-    amount DECIMAL(10,2) NOT NULL,
-    category TEXT NOT NULL,
+    invoice_no TEXT,
+    date TEXT,
+    amount REAL,
+    category TEXT,
     vendor TEXT,
     description TEXT,
+    user_id INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    month_year TEXT GENERATED ALWAYS AS (strftime('%Y-%m', date)),
+    year INTEGER GENERATED ALWAYS AS (strftime('%Y', date)),
+    month INTEGER GENERATED ALWAYS AS (strftime('%m', date)),
     FOREIGN KEY (user_id) REFERENCES users (id)
 );
 
--- Budgets table
-CREATE TABLE monthly_budgets (
+-- Monthly Budgets table
+CREATE TABLE IF NOT EXISTS monthly_budgets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    month_year TEXT NOT NULL,
-    category TEXT NOT NULL,
-    budget_amount DECIMAL(10,2) NOT NULL,
+    user_id INTEGER,
+    month_year TEXT,
+    category TEXT,
+    budget_amount REAL DEFAULT 0,
+    actual_amount REAL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id),
     UNIQUE(user_id, month_year, category)
+);
+
+-- Expense Alerts table
+CREATE TABLE IF NOT EXISTS expense_alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    alert_type TEXT,
+    message TEXT,
+    is_read BOOLEAN DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id)
 );
 ```
 
