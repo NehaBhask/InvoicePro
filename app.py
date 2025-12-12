@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import numpy as np
-
+import re
 # Initialize Flask app
 load_dotenv()
 app = Flask(__name__)
@@ -248,11 +248,293 @@ def logout():
     return redirect(url_for('login'))
 
 # ---------------- INVOICE PROCESSING FUNCTIONS ----------------
+
+import re
+from datetime import datetime
+
+def extract_invoice_number(text):
+    """
+    Enhanced invoice number extraction with multiple patterns
+    """
+    print("\n🔍 Extracting Invoice Number...")
+    
+    # Pattern priority list (most specific to least specific)
+    patterns = [
+        # Pattern 1: Receipt Number (highest priority for receipts)
+        (r'Receipt\s*(?:Number|No\.?|#|Num|ID)?\s*[:\-]?\s*([A-Z0-9\-]+)', 'Receipt Number'),
+        
+        # Pattern 2: Invoice Number with various formats
+        (r'Invoice\s*(?:Number|No\.?|#|Num|ID)?\s*[:\-/]?\s*([A-Z0-9\-/]+)', 'Invoice Number'),
+        
+        # Pattern 3: Invoice No/Date combined (like "Invoice No/Date: 509")
+        (r'Invoice\s*No\s*/\s*Date\s*:\s*(\d+)', 'Invoice No/Date Combined'),
+        
+        # Pattern 4: Bill Number
+        (r'Bill\s*(?:Number|No\.?|#|Num|ID)?\s*[:\-]?\s*([A-Z0-9\-]+)', 'Bill Number'),
+        
+        # Pattern 5: Transaction ID
+        (r'Transaction\s*(?:ID|Number|No\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)', 'Transaction ID'),
+        
+        # Pattern 6: Order Number
+        (r'Order\s*(?:Number|No\.?|#|ID)?\s*[:\-]?\s*([A-Z0-9\-]+)', 'Order Number'),
+        
+        # Pattern 7: Reference Number
+        (r'Ref(?:erence)?\s*(?:Number|No\.?|#)?\s*[:\-]?\s*([A-Z0-9\-]+)', 'Reference Number'),
+        
+        # Pattern 8: Document Number
+        (r'Doc(?:ument)?\s*(?:Number|No\.?|#)?\s*[:\-]?\s*([A-Z0-9\-]+)', 'Document Number'),
+        
+        # Pattern 9: Simple INV prefix
+        (r'\bINV[:\-]?([A-Z0-9\-]+)', 'INV Prefix'),
+        
+        # Pattern 10: Hash followed by alphanumeric
+        (r'#\s*([A-Z0-9]{4,})', 'Hash Number'),
+        
+        # Pattern 11: Standalone long numeric code (8+ digits)
+        (r'\b(\d{8,})\b', 'Long Numeric Code'),
+        
+        # Pattern 12: Standalone alphanumeric code (6+ chars with mix of letters and numbers)
+        (r'\b([A-Z]{2,}[0-9]{4,}|[0-9]{4,}[A-Z]{2,})\b', 'Alphanumeric Code'),
+    ]
+    
+    # Try each pattern in order
+    for pattern, pattern_name in patterns:
+        matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE)
+        
+        for match in matches:
+            invoice_num = match.group(1).strip()
+            
+            # Validate the extracted number
+            if validate_invoice_number(invoice_num):
+                print(f"✅ Found via {pattern_name}: {invoice_num}")
+                return invoice_num
+    
+    print("⚠️ No invoice number found")
+    return None
+
+
+def validate_invoice_number(invoice_num):
+    """
+    Validate if the extracted string is likely a valid invoice number
+    """
+    if not invoice_num or len(invoice_num) < 2:
+        return False
+    
+    # Remove common noise words
+    noise_words = ['invoice', 'receipt', 'bill', 'total', 'date', 'amount', 
+                   'customer', 'name', 'phone', 'email', 'address', 'street',
+                   'road', 'payment', 'method', 'card', 'cash']
+    if invoice_num.lower() in noise_words:
+        return False
+    
+    # Filter out common vendor names that might be picked up
+    vendor_names = ['apple', 'microsoft', 'amazon', 'walmart', 'google', 
+                    'facebook', 'starbucks', 'mcdonalds', 'target', 'costco']
+    if invoice_num.lower() in vendor_names:
+        print(f"⚠️ Rejected '{invoice_num}' - matches vendor name")
+        return False
+    
+    # Reject if it's just a word with no digits (likely a vendor name)
+    has_digit = any(c.isdigit() for c in invoice_num)
+    if not has_digit and len(invoice_num) <= 15:
+        print(f"⚠️ Rejected '{invoice_num}' - no digits (likely vendor name)")
+        return False
+    
+    # Must contain at least one digit OR be all uppercase with reasonable length and digits
+    is_valid_format = has_digit or (invoice_num.isupper() and len(invoice_num) >= 3 and has_digit)
+    
+    # Length check (reasonable range)
+    if len(invoice_num) > 50:
+        return False
+    
+    return is_valid_format
+
+
+def extract_date(text):
+    """
+    Enhanced date extraction with multiple patterns and formats
+    Handles formats like: 01-12-2025, April 9/2025, 04:11 PM / 01-12-2025
+    """
+    print("\n📅 Extracting Date...")
+    
+    lines = text.split('\n')
+    
+    # Pattern priority list
+    date_patterns = [
+        # Pattern 0: Date with time and date separator (like "04:11 PM / 01-12-2025")
+        (r'\d{1,2}:\d{2}\s*(?:AM|PM)?\s*/\s*(\d{1,2}[\-/\.]\d{1,2}[\-/\.]\d{2,4})', 'Time/Date Combined'),
+        
+        # Pattern 1: Explicit date labels
+        (r'(?:Invoice\s*)?Date\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', 'Invoice Date Label'),
+        (r'Bill\s*Date\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', 'Bill Date Label'),
+        (r'Transaction\s*Date\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', 'Transaction Date Label'),
+        (r'Purchase\s*Date\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})', 'Purchase Date Label'),
+        
+        # Pattern 2: Date with month name and slash (like "April 9/2025")
+        (r'((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*/\s*\d{4})', 'Month Name/Year'),
+        (r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s*/\s*\d{4})', 'Short Month/Year'),
+        
+        # Pattern 3: Date with month name (standard)
+        (r'(\d{1,2}[\s\-/](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s\-/]\d{2,4})', 'Month Name Format'),
+        (r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s\-/]\d{1,2}[\s\,/]\d{2,4})', 'Month Name First'),
+        
+        # Pattern 4: ISO format YYYY-MM-DD
+        (r'(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})', 'ISO Format'),
+        
+        # Pattern 5: Common formats DD-MM-YYYY or MM-DD-YYYY
+        (r'(\d{1,2}[\-]\d{1,2}[\-]\d{4})', 'Dash Format'),
+        (r'(\d{1,2}[\/]\d{1,2}[\/]\d{2,4})', 'Slash Format'),
+        (r'(\d{1,2}[\.]\d{1,2}[\.]\d{2,4})', 'Dot Format'),
+    ]
+    
+    # First pass: Look in first 20 lines with explicit labels
+    for i, line in enumerate(lines[:20]):
+        for pattern, pattern_name in date_patterns:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                date_str = match.group(1)
+                parsed_date = parse_date_enhanced(date_str)
+                if parsed_date:
+                    print(f"✅ Found via {pattern_name} in line {i}: {date_str} → {parsed_date}")
+                    return parsed_date
+    
+    # Second pass: All patterns across entire text
+    for pattern, pattern_name in date_patterns:
+        matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE)
+        
+        for match in matches:
+            date_str = match.group(1)
+            parsed_date = parse_date_enhanced(date_str)
+            if parsed_date:
+                print(f"✅ Found via {pattern_name}: {date_str} → {parsed_date}")
+                return parsed_date
+    
+    print("⚠️ No date found")
+    return None
+
+
+def parse_date_enhanced(date_str):
+    """
+    Enhanced date parsing with multiple format support
+    Handles: DD-MM-YYYY, MM/DD/YYYY, April 9/2025, etc.
+    """
+    if not date_str:
+        return None
+    
+    # Clean the date string
+    date_str = date_str.strip()
+    date_str = re.sub(r'^(date|invoice date|bill date)[:\s]*', '', date_str, flags=re.IGNORECASE).strip()
+    
+    # Special handling for "Month Day/Year" format (like "April 9/2025")
+    month_slash_pattern = r'(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s*/\s*(\d{4})'
+    match = re.match(month_slash_pattern, date_str, re.IGNORECASE)
+    if match:
+        month_name, day, year = match.groups()
+        month_map = {
+            'jan': 1, 'january': 1,
+            'feb': 2, 'february': 2,
+            'mar': 3, 'march': 3,
+            'apr': 4, 'april': 4,
+            'may': 5,
+            'jun': 6, 'june': 6,
+            'jul': 7, 'july': 7,
+            'aug': 8, 'august': 8,
+            'sep': 9, 'september': 9,
+            'oct': 10, 'october': 10,
+            'nov': 11, 'november': 11,
+            'dec': 12, 'december': 12
+        }
+        month_num = month_map.get(month_name.lower())
+        if month_num and 1 <= int(day) <= 31:
+            return f"{year}-{month_num:02d}-{int(day):02d}"
+    
+    # List of date formats to try
+    date_formats = [
+        # ISO formats
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%Y.%m.%d",
+        
+        # DD-MM-YYYY formats (common in India/Europe)
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%d.%m.%Y",
+        
+        # MM-DD-YYYY formats (US)
+        "%m-%d-%Y",
+        "%m/%d/%Y",
+        "%m.%d.%Y",
+        
+        # Two-digit year formats
+        "%d-%m-%y",
+        "%d/%m/%y",
+        "%m-%d-%y",
+        "%m/%d/%y",
+        
+        # Month name formats
+        "%d %B %Y",
+        "%d %b %Y",
+        "%B %d, %Y",
+        "%b %d, %Y",
+        "%d-%B-%Y",
+        "%d-%b-%Y",
+        "%B %d %Y",
+        "%b %d %Y",
+        "%d %b, %Y",
+        "%d %B, %Y",
+    ]
+    
+    # Try each format
+    for fmt in date_formats:
+        try:
+            parsed = datetime.strptime(date_str, fmt)
+            
+            # Validate the date is reasonable (between 2000 and 2030)
+            if 2000 <= parsed.year <= 2030:
+                return parsed.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    
+    # Try regex-based parsing as fallback
+    date_regex = r'(\d{1,2})[\-/\.](\d{1,2})[\-/\.](\d{2,4})'
+    match = re.search(date_regex, date_str)
+    
+    if match:
+        try:
+            part1, part2, year = match.groups()
+            part1, part2, year = int(part1), int(part2), int(year)
+            
+            # Convert 2-digit year to 4-digit
+            if year < 100:
+                year += 2000 if year < 50 else 1900
+            
+            # Determine if it's DD-MM-YYYY or MM-DD-YYYY based on values
+            # Default to DD-MM-YYYY (common in India, Europe)
+            if part1 > 12:  # Must be DD-MM-YYYY
+                day, month = part1, part2
+            elif part2 > 12:  # Must be MM-DD-YYYY
+                month, day = part1, part2
+            else:  # Ambiguous - check if dash is used (common for DD-MM-YYYY)
+                if '-' in date_str:
+                    day, month = part1, part2  # DD-MM-YYYY with dash
+                else:
+                    day, month = part1, part2  # Default to DD-MM-YYYY
+            
+            # Validate
+            if 1 <= month <= 12 and 1 <= day <= 31 and 2000 <= year <= 2030:
+                return f"{year:04d}-{month:02d}-{day:02d}"
+        except (ValueError, IndexError):
+            pass
+    
+    return None
+
+
 def extract_vendor(text):
     """Extract vendor name from invoice text"""
     lines = text.split('\n')
-    vendor_indicators = ["from:", "vendor:", "supplier:", "to:", "bill to:", "sold to:", "company:"]
+    vendor_indicators = ["from:", "vendor:", "supplier:", "to:", "bill to:", "sold to:", "company:", "store:"]
     
+    # First, check for explicit vendor indicators
     for i, line in enumerate(lines):
         line_lower = line.lower().strip()
         
@@ -262,24 +544,53 @@ def extract_vendor(text):
                 if vendor and len(vendor) > 2:
                     return vendor
         
+        # Look for company indicators in first 5 lines
         if i < 5 and len(line.strip()) > 3:
-            if any(word in line_lower for word in ['inc', 'ltd', 'corp', 'company', 'llc']):
+            if any(word in line_lower for word in ['inc', 'ltd', 'corp', 'company', 'llc', 'store', 'shop']):
                 return line.strip()
         
+        # Look for all caps company names in first 3 lines
         if i < 3 and line.strip().isupper() and len(line.strip()) > 3:
-            return line.strip()
+            # Filter out common headers
+            if not any(word in line_lower for word in ['invoice', 'receipt', 'bill', 'tax']):
+                return line.strip()
     
     return "Unknown Vendor"
+
 
 def categorize_invoice(text, vendor=None):
     """Categorize invoice based on text content and vendor"""
     text_lower = text.lower()
+    
+    # Vendor-based categorization
+    VENDOR_CATEGORIES = {
+        "apple": "Technology",
+        "microsoft": "Technology",
+        "dell": "Technology",
+        "hp": "Technology",
+        "best buy": "Technology",
+        "amazon": "Office Supplies",
+        "walmart": "Office Supplies",
+        "staples": "Office Supplies",
+        "starbucks": "Meals & Entertainment",
+        "mcdonald": "Meals & Entertainment",
+    }
     
     if vendor and vendor != "Unknown Vendor":
         vendor_lower = vendor.lower()
         for vendor_key, category in VENDOR_CATEGORIES.items():
             if vendor_key in vendor_lower:
                 return category
+    
+    # Content-based categorization
+    CATEGORIES = {
+        "Technology": ["laptop", "computer", "software", "macbook", "iphone", "ipad", "tablet", "phone", "mobile", "tech", "electronics"],
+        "Office Supplies": ["pen", "pencil", "paper", "notebook", "folder", "stapler", "envelope", "printer", "ink", "toner"],
+        "Utilities": ["electricity", "water", "gas", "internet", "wifi", "broadband"],
+        "Travel": ["flight", "hotel", "taxi", "uber", "train", "bus", "transport"],
+        "Meals & Entertainment": ["restaurant", "food", "meal", "dinner", "lunch", "breakfast", "cafe", "coffee"],
+        "Clothing": ["clothing", "shirt", "t-shirt", "pants", "dress", "apparel", "fashion"],
+    }
     
     for category, keywords in CATEGORIES.items():
         for keyword in keywords:
@@ -288,48 +599,6 @@ def categorize_invoice(text, vendor=None):
     
     return "Other"
 
-def parse_date(date_str):
-    """Parse various date formats and return YYYY-MM-DD format"""
-    if not date_str:
-        return None
-    
-    date_str = re.sub(r'^(date|invoice date|bill date)[:\s]*', '', date_str, flags=re.IGNORECASE).strip()
-    
-    patterns = [
-        r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})',
-        r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})',
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, date_str)
-        if match:
-            groups = match.groups()
-            if len(groups) == 3:
-                try:
-                    if len(groups[2]) == 4:
-                        year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
-                    else:
-                        if int(groups[0]) > 12:
-                            day, month, year = int(groups[0]), int(groups[1]), int(groups[2])
-                        else:
-                            month, day, year = int(groups[0]), int(groups[1]), int(groups[2])
-                    
-                    if year < 100:
-                        year += 2000 if year < 50 else 1900
-                    
-                    if 1 <= month <= 12 and 1 <= day <= 31:
-                        return f"{year:04d}-{month:02d}-{day:02d}"
-                except (ValueError, IndexError):
-                    continue
-    
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%m-%d-%Y", "%B %d, %Y", "%b %d, %Y"):
-        try:
-            parsed = datetime.strptime(date_str, fmt)
-            return parsed.strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    
-    return None
 
 def generate_description(data, text):
     """Generate a meaningful description from extracted data"""
@@ -343,7 +612,8 @@ def generate_description(data, text):
         line = line.strip()
         if (len(line) > 10 and 
             not line.startswith('$') and 
-            not any(word in line.lower() for word in ['invoice', 'bill', 'date', 'total', 'amount', 'qty', 'quantity'])):
+            not line.startswith('€') and
+            not any(word in line.lower() for word in ['invoice', 'bill', 'date', 'total', 'amount', 'qty', 'quantity', 'receipt'])):
             description_parts.append(line)
             break
     
@@ -351,15 +621,15 @@ def generate_description(data, text):
         return " - ".join(description_parts[:2])
     return "Invoice Purchase"
 
+
 def extract_amount_enhanced(text):
-    """Simple but effective amount extraction"""
-    print(f"\n🔍 DEBUG: Starting amount extraction from {len(text)} chars")
+    """Enhanced amount extraction supporting multiple currencies"""
+    print(f"\n💰 DEBUG: Starting amount extraction from {len(text)} chars")
     
-    # FIRST: Look for "Total Paid" pattern
+    # Pattern 1: Look for "Total Paid" pattern
     total_paid_patterns = [
-        r'Total\s*Paid\s*[€$]?\s*[:]?\s*([\d,]+\.?\d*)',
-        r'total\s*paid\s*[€$]?\s*[:]?\s*([\d,]+\.?\d*)',
-        r'TOTAL\s*PAID\s*[€$]?\s*[:]?\s*([\d,]+\.?\d*)'
+        r'Total\s*Paid\s*[€$₹]?\s*[:]?\s*([\d,]+\.?\d*)',
+        r'total\s*paid\s*[€$₹]?\s*[:]?\s*([\d,]+\.?\d*)',
     ]
     
     for pattern in total_paid_patterns:
@@ -375,11 +645,10 @@ def extract_amount_enhanced(text):
             except:
                 continue
     
-    # SECOND: Look for any "Total" pattern
+    # Pattern 2: Look for any "Total" pattern
     total_patterns = [
-        r'Total\s*[€$]?\s*[:]?\s*([\d,]+\.?\d*)',
-        r'total\s*[€$]?\s*[:]?\s*([\d,]+\.?\d*)',
-        r'TOTAL\s*[€$]?\s*[:]?\s*([\d,]+\.?\d*)'
+        r'Total\s*[€$₹]?\s*[:]?\s*([\d,]+\.?\d*)',
+        r'total\s*[€$₹]?\s*[:]?\s*([\d,]+\.?\d*)',
     ]
     
     for pattern in total_patterns:
@@ -395,10 +664,9 @@ def extract_amount_enhanced(text):
             except:
                 continue
     
-    # THIRD: Look for the largest currency amount in the text
-    print("⚠️  Falling back to find largest currency amount")
-    
-    currency_amounts = re.findall(r'[€$]\s*([\d,]+\.\d{2})', text)
+    # Pattern 3: Look for currency amounts (€, $, ₹)
+    print("⚠️ Falling back to find largest currency amount")
+    currency_amounts = re.findall(r'[€$₹]\s*([\d,]+\.?\d*)', text)
     
     if currency_amounts:
         print(f"Found currency amounts: {currency_amounts}")
@@ -416,8 +684,8 @@ def extract_amount_enhanced(text):
             print(f"✅ Selected largest currency amount: {max_amount}")
             return max_amount
     
-    # FOURTH: Look for any number with 2 decimal places
-    print("⚠️  Looking for any decimal numbers")
+    # Pattern 4: Look for decimal numbers
+    print("⚠️ Looking for any decimal numbers")
     decimal_numbers = re.findall(r'(\d+[,.]\d{2})\b', text)
     
     if decimal_numbers:
@@ -427,7 +695,7 @@ def extract_amount_enhanced(text):
             try:
                 clean_amount = amount_str.replace(',', '.').replace(' ', '')
                 amount = float(clean_amount)
-                if amount > max_amount and amount < 100000:
+                if amount > max_amount and amount < 1000000:
                     max_amount = amount
             except:
                 continue
@@ -439,8 +707,12 @@ def extract_amount_enhanced(text):
     print("❌ No amount found, using 0.0")
     return 0.0
 
+
+# Updated extract_invoice_data_ner function
 def extract_invoice_data_ner(text):
-    """Extract invoice data - SIMPLIFIED VERSION"""
+    """
+    Extract invoice data - IMPROVED VERSION
+    """
     print("\n" + "="*50)
     print("EXTRACTING INVOICE DATA")
     print("="*50)
@@ -454,41 +726,34 @@ def extract_invoice_data_ner(text):
         "Description": None
     }
 
+    # Extract vendor
     data["Vendor"] = extract_vendor(text)
     print(f"Vendor: {data['Vendor']}")
     
+    # Extract amount
     amount = extract_amount_enhanced(text)
     data["Amount"] = amount
     print(f"Amount extracted: {data['Amount']}")
     
-    receipt_match = re.search(r'Receipt\s*(?:Number|No|#)?\s*[:]?\s*(\d+)', text, re.IGNORECASE)
-    if receipt_match:
-        data["Invoice Number"] = receipt_match.group(1)
-    else:
-        invoice_match = re.search(r'(?:Invoice|Bill|Inv)\s*(?:Number|No|#)?\s*[:]?\s*(\d+)', text, re.IGNORECASE)
-        if invoice_match:
-            data["Invoice Number"] = invoice_match.group(1)
-    
+    # Extract invoice number
+    data["Invoice Number"] = extract_invoice_number(text)
+    if not data["Invoice Number"]:
+        data["Invoice Number"] = f"INV-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     print(f"Invoice Number: {data['Invoice Number']}")
     
-    date_match = re.search(r'Date\s*[:]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', text, re.IGNORECASE)
-    if date_match:
-        parsed_date = parse_date(date_match.group(1))
-        if parsed_date:
-            data["Date"] = parsed_date
+    # Extract date
+    data["Date"] = extract_date(text)
+    if not data["Date"]:
+        data["Date"] = datetime.now().strftime("%Y-%m-%d")
     print(f"Date: {data['Date']}")
     
+    # Categorize
     data["Category"] = categorize_invoice(text, data["Vendor"])
     print(f"Category: {data['Category']}")
     
+    # Generate description
     data["Description"] = generate_description(data, text)
     print(f"Description: {data['Description']}")
-    
-    if not data["Invoice Number"]:
-        data["Invoice Number"] = f"INV-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    
-    if not data["Date"]:
-        data["Date"] = datetime.now().strftime("%Y-%m-%d")
     
     print(f"Final Amount to store in DB: {data['Amount']}")
     print("="*50 + "\n")
